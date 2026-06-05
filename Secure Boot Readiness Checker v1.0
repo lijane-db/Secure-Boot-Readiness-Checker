@@ -3,7 +3,7 @@
     Secure Boot Readiness Checker
 
 .VERSION
-    1.2
+    1.4
 
 .AUTHOR
     Lijane Consulting
@@ -13,6 +13,8 @@
 param(
     [switch]$Detailed,
     [switch]$ExportJson,
+    [switch]$ExportHtml,
+    [switch]$CheckEvents,
     [string]$OutputPath = $PSScriptRoot
 )
 
@@ -201,6 +203,51 @@ Write-Host "Recommendation:"
 Write-Host "$Recommendation"
 Write-Host ""
 
+$LastSecureBootEventId = $null
+$LastSecureBootEventDate = $null
+$LastSecureBootEventMessage = $null
+$SecureBootEventStatus = "Not checked"
+
+if ($CheckEvents) {
+    try {
+        $Events = Get-WinEvent -LogName "Microsoft-Windows-TPM-WMI/Operational" `
+            -FilterXPath "*[System[(EventID=1795 or EventID=1796 or EventID=1801 or EventID=1808)]]" `
+            -MaxEvents 20 `
+            -ErrorAction Stop
+
+        if ($Events) {
+            $LastEvent = $Events | Sort-Object TimeCreated -Descending | Select-Object -First 1
+
+            $LastSecureBootEventId = $LastEvent.Id
+            $LastSecureBootEventDate = $LastEvent.TimeCreated
+            $LastSecureBootEventMessage = $LastEvent.Message
+
+            $SecureBootEventStatus = switch ($LastEvent.Id) {
+                1808 { "Secure Boot update appears successfully applied." }
+                1795 { "Secure Boot update detected or initiated." }
+                1796 { "Secure Boot update warning or issue detected." }
+                1801 { "Secure Boot update issue detected." }
+                default { "Secure Boot related event detected." }
+            }
+        }
+        else {
+            $SecureBootEventStatus = "No Secure Boot related TPM-WMI event found."
+        }
+    }
+    catch {
+    if ($_.Exception.Message -match "There is not an event log") {
+        $SecureBootEventStatus = "TPM-WMI event log not available on this device."
+        $LastSecureBootEventId = $null
+        $LastSecureBootEventDate = $null
+        $LastSecureBootEventMessage = $null
+    }
+    else {
+        $SecureBootEventStatus = "Unable to read TPM-WMI events: $($_.Exception.Message)"
+    }
+}
+}
+
+
 if ($Detailed) {
     Write-Host "Detailed Information"
     Write-Host "--------------------"
@@ -213,6 +260,15 @@ if ($Detailed) {
         Write-Host "Last Error        : $UnsupportedReason"
     }
 
+    Write-Host ""
+}
+
+if ($CheckEvents) {
+    Write-Host "Secure Boot Events"
+    Write-Host "------------------"
+    Write-Host "Last Event ID   : $LastSecureBootEventId"
+    Write-Host "Last Event Date : $LastSecureBootEventDate"
+    Write-Host "Event Status    : $SecureBootEventStatus"
     Write-Host ""
 }
 
@@ -245,12 +301,133 @@ if ($ExportJson) {
         Status             = $Status
         Recommendation     = $Recommendation
         LastError          = $UnsupportedReason
+        CheckEvents                = $CheckEvents
+        LastSecureBootEventId      = $LastSecureBootEventId
+        LastSecureBootEventDate    = $LastSecureBootEventDate
+        SecureBootEventStatus      = $SecureBootEventStatus
+        LastSecureBootEventMessage = $LastSecureBootEventMessage
         ScanDate           = (Get-Date).ToString("s")
     }
 
     $Result | ConvertTo-Json -Depth 5 | Out-File -FilePath $JsonFile -Encoding UTF8
 
     Write-Host "JSON Export    : $JsonFile"
+}
+
+if ($ExportHtml) {
+
+    if (-not (Test-Path $OutputPath)) {
+        New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
+    }
+
+    $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $HtmlFile = Join-Path $OutputPath "SecureBootReadiness_$env:COMPUTERNAME`_$Timestamp.html"
+
+    $StatusClass = switch ($Status) {
+        "READY" { "ready" }
+        "READY WITH WARNING" { "warning" }
+        "ACTION REQUIRED" { "action" }
+        "UNSUPPORTED" { "unsupported" }
+        default { "unknown" }
+    }
+
+    $HtmlContent = @"
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Secure Boot Readiness Report</title>
+<style>
+body { font-family: Segoe UI, Arial; background:#f4f6f8; color:#1f2937; margin:0; }
+.header { background:#0f172a; color:white; padding:24px 40px; }
+.header h1 { margin:0; font-size:24px; }
+.header p { margin:6px 0 0 0; color:#cbd5e1; }
+.container { padding:30px 40px; }
+.card { background:white; border-radius:10px; padding:22px; margin-bottom:20px; box-shadow:0 2px 8px rgba(0,0,0,0.08); }
+.status { font-size:28px; font-weight:700; padding:14px 18px; border-radius:8px; display:inline-block; }
+.ready { background:#dcfce7; color:#166534; }
+.warning { background:#fef9c3; color:#854d0e; }
+.action { background:#fee2e2; color:#991b1b; }
+.unsupported { background:#e5e7eb; color:#374151; }
+.unknown { background:#e0e7ff; color:#3730a3; }
+.score { font-size:42px; font-weight:700; margin-top:10px; }
+.grid { display:grid; grid-template-columns: 260px 1fr; row-gap:10px; }
+.label { font-weight:600; color:#475569; }
+.ok { color:#166534; font-weight:700; }
+.ko { color:#991b1b; font-weight:700; }
+.footer { color:#64748b; font-size:12px; margin-top:30px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Secure Boot Readiness Checker</h1>
+  <p>Lijane Consulting - Digital Workplace & Endpoint Security</p>
+</div>
+
+<div class="container">
+
+  <div class="card">
+    <div class="status $StatusClass">$Status</div>
+    <div class="score">$Score / 100</div>
+    <p>$Recommendation</p>
+  </div>
+
+  <div class="card">
+    <h2>Device Information</h2>
+    <div class="grid">
+      <div class="label">Computer Name</div><div>$env:COMPUTERNAME</div>
+      <div class="label">Manufacturer</div><div>$Manufacturer</div>
+      <div class="label">Model</div><div>$Model</div>
+      <div class="label">BIOS Version</div><div>$BIOSVersion</div>
+      <div class="label">BIOS Date</div><div>$BIOSDate</div>
+      <div class="label">OS Version</div><div>$OSVersion</div>
+      <div class="label">OS Build</div><div>$OSBuild</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Secure Boot Checks</h2>
+    <div class="grid">
+      <div class="label">UEFI Mode</div><div>$IsUEFI</div>
+      <div class="label">Secure Boot Enabled</div><div>$SecureBootEnabled</div>
+      <div class="label">KEK 2023 Present</div><div>$HasKEK2023</div>
+      <div class="label">DB 2023 Present</div><div>$HasDB2023</div>
+      <div class="label">DBX Present</div><div>$HasDBX</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Detected Certificates</h2>
+    <div class="grid">
+      <div class="label">Detected KEK 2023</div><div>$DetectedKEK2023</div>
+      <div class="label">Detected DB 2023</div><div>$DetectedDB2023</div>
+      <div class="label">DBX Bytes Count</div><div>$DBXBytesCount</div>
+      <div class="label">Last Error</div><div>$UnsupportedReason</div>
+    </div>
+  </div>
+  <div class="card">
+  <h2>Secure Boot Events</h2>
+  <div class="grid">
+    <div class="label">Check Events</div><div>$CheckEvents</div>
+    <div class="label">Last Event ID</div><div>$LastSecureBootEventId</div>
+    <div class="label">Last Event Date</div><div>$LastSecureBootEventDate</div>
+    <div class="label">Event Status</div><div>$SecureBootEventStatus</div>
+  </div>
+</div>
+
+  <div class="footer">
+    Report generated on $(Get-Date -Format "yyyy-MM-dd HH:mm:ss") by Lijane Consulting.
+  </div>
+
+</div>
+</body>
+</html>
+"@
+
+    $HtmlContent | Out-File -FilePath $HtmlFile -Encoding UTF8
+
+    Write-Host "HTML Export    : $HtmlFile"
 }
 
 Write-Host "=================================================="
