@@ -1,0 +1,174 @@
+<#
+.SYNOPSIS
+    Secure Boot Readiness Checker
+
+.DESCRIPTION
+    Audits Secure Boot readiness for Microsoft Secure Boot 2023 certificates.
+
+.VERSION
+    1.0
+
+.AUTHOR
+    Lijane Consulting
+#>
+
+[CmdletBinding()]
+param()
+
+#region Functions
+
+function Get-AsciiString {
+    param(
+        [byte[]]$Bytes
+    )
+
+    try {
+        return [System.Text.Encoding]::ASCII.GetString($Bytes)
+    }
+    catch {
+        return ""
+    }
+}
+
+function Test-UEFIMode {
+
+    try {
+        Confirm-SecureBootUEFI | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-SecureBootEnabled {
+
+    try {
+        return (Confirm-SecureBootUEFI)
+    }
+    catch {
+        return $false
+    }
+}
+
+#endregion
+
+#region Banner
+
+Write-Host ""
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host " Secure Boot Readiness Checker v1.0" -ForegroundColor Cyan
+Write-Host " Lijane Consulting" -ForegroundColor Cyan
+Write-Host "==================================================" -ForegroundColor Cyan
+Write-Host ""
+
+#endregion
+
+#region System Information
+
+$ComputerSystem = Get-CimInstance Win32_ComputerSystem
+$BIOS = Get-CimInstance Win32_BIOS
+$OS = Get-CimInstance Win32_OperatingSystem
+
+$Manufacturer = $ComputerSystem.Manufacturer
+$Model = $ComputerSystem.Model
+$BIOSVersion = ($BIOS.SMBIOSBIOSVersion)
+$BIOSDate = $BIOS.ReleaseDate
+$OSVersion = $OS.Version
+
+#endregion
+
+#region Secure Boot Checks
+
+$IsUEFI = Test-UEFIMode
+$SecureBootEnabled = Test-SecureBootEnabled
+
+$HasKEK2023 = $false
+$HasDB2023 = $false
+$HasDBX = $false
+
+if ($IsUEFI) {
+
+    try {
+
+        $KEK = Get-SecureBootUEFI KEK -ErrorAction Stop
+        $DB = Get-SecureBootUEFI db -ErrorAction Stop
+        $DBX = Get-SecureBootUEFI dbx -ErrorAction Stop
+
+        $KEKAscii = Get-AsciiString $KEK.Bytes
+        $DBAscii = Get-AsciiString $DB.Bytes
+
+        if ($KEKAscii -match 'Microsoft Corporation KEK 2K CA 2023') {
+            $HasKEK2023 = $true
+        }
+
+        if (
+            $DBAscii -match 'Microsoft Windows UEFI CA 2023' -or
+            $DBAscii -match 'Microsoft UEFI CA 2023'
+        ) {
+            $HasDB2023 = $true
+        }
+
+        if ($DBX.Bytes.Count -gt 0) {
+            $HasDBX = $true
+        }
+
+    }
+    catch {
+        Write-Warning "Unable to read Secure Boot variables."
+    }
+}
+
+#endregion
+
+#region Scoring
+
+$Score = 0
+
+if ($IsUEFI) { $Score += 20 }
+if ($SecureBootEnabled) { $Score += 20 }
+if ($HasKEK2023) { $Score += 20 }
+if ($HasDB2023) { $Score += 20 }
+if ($HasDBX) { $Score += 20 }
+
+switch ($Score) {
+
+    { $_ -ge 90 } {
+        $Status = "READY"
+        break
+    }
+
+    { $_ -ge 60 } {
+        $Status = "READY WITH WARNING"
+        break
+    }
+
+    default {
+        $Status = "ACTION REQUIRED"
+    }
+}
+
+#endregion
+
+#region Output
+
+Write-Host "Computer Name : $env:COMPUTERNAME"
+Write-Host "Manufacturer  : $Manufacturer"
+Write-Host "Model         : $Model"
+Write-Host "BIOS Version  : $BIOSVersion"
+Write-Host ""
+
+Write-Host "UEFI Mode     : $IsUEFI"
+Write-Host "Secure Boot   : $SecureBootEnabled"
+Write-Host "KEK 2023      : $HasKEK2023"
+Write-Host "DB 2023       : $HasDB2023"
+Write-Host "DBX Present   : $HasDBX"
+Write-Host ""
+
+Write-Host "Status        : $Status"
+Write-Host "Score         : $Score / 100"
+
+Write-Host ""
+Write-Host "=================================================="
+
+#endregion
