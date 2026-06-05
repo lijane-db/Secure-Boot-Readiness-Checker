@@ -210,6 +210,13 @@ Score         : 100 / 100
 ```
 
 ---
+## JSON Report
+
+![Console Report](docs/SecureBootReadinessChecker_result_json.png)
+
+## HTML Report
+
+![HTML Report](docs/SecureBootReadinessChecker_result.png)
 
 ## Disclaimer
 
