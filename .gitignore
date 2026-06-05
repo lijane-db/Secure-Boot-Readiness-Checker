@@ -1,0 +1,18 @@
+# Reports
+*.html
+*.csv
+*.json
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# PowerShell
+*.psd1
+*.psm1
+
+# Windows
+Thumbs.db
+Desktop.ini
