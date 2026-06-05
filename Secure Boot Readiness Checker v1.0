@@ -3,7 +3,7 @@
     Secure Boot Readiness Checker
 
 .VERSION
-    1.1
+    1.2
 
 .AUTHOR
     Lijane Consulting
@@ -11,7 +11,9 @@
 
 [CmdletBinding()]
 param(
-    [switch]$Detailed
+    [switch]$Detailed,
+    [switch]$ExportJson,
+    [string]$OutputPath = $PSScriptRoot
 )
 
 function Get-AsciiString {
@@ -212,6 +214,43 @@ if ($Detailed) {
     }
 
     Write-Host ""
+}
+
+if ($ExportJson) {
+
+    if (-not (Test-Path $OutputPath)) {
+        New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
+    }
+
+    $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $JsonFile = Join-Path $OutputPath "SecureBootReadiness_$env:COMPUTERNAME`_$Timestamp.json"
+
+    $Result = [PSCustomObject]@{
+        ComputerName       = $env:COMPUTERNAME
+        Manufacturer       = $Manufacturer
+        Model              = $Model
+        BIOSVersion        = $BIOSVersion
+        BIOSDate           = $BIOSDate
+        OSVersion          = $OSVersion
+        OSBuild            = $OSBuild
+        IsUEFI             = $IsUEFI
+        SecureBootEnabled  = $SecureBootEnabled
+        KEK2023Present     = $HasKEK2023
+        DB2023Present      = $HasDB2023
+        DBXPresent         = $HasDBX
+        DetectedKEK2023    = $DetectedKEK2023
+        DetectedDB2023     = $DetectedDB2023
+        DBXBytesCount      = $DBXBytesCount
+        Score              = $Score
+        Status             = $Status
+        Recommendation     = $Recommendation
+        LastError          = $UnsupportedReason
+        ScanDate           = (Get-Date).ToString("s")
+    }
+
+    $Result | ConvertTo-Json -Depth 5 | Out-File -FilePath $JsonFile -Encoding UTF8
+
+    Write-Host "JSON Export    : $JsonFile"
 }
 
 Write-Host "=================================================="
