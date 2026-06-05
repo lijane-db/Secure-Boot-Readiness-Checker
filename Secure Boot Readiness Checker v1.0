@@ -3,7 +3,7 @@
     Secure Boot Readiness Checker
 
 .VERSION
-    1.5
+    1.6
 
 .AUTHOR
     Lijane Consulting
@@ -16,6 +16,7 @@ param(
     [switch]$ExportHtml,
     [switch]$CheckEvents,
     [switch]$Quiet,
+    [switch]$ExportCsv,
     [string]$OutputPath = $PSScriptRoot
 )
 
@@ -313,6 +314,45 @@ if ($ExportJson) {
     $Result | ConvertTo-Json -Depth 5 | Out-File -FilePath $JsonFile -Encoding UTF8
 
     Write-Host "JSON Export    : $JsonFile"
+}
+
+if ($ExportCsv) {
+
+    if (-not (Test-Path $OutputPath)) {
+        New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
+    }
+
+    $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $CsvFile = Join-Path $OutputPath "SecureBootReadiness_$env:COMPUTERNAME`_$Timestamp.csv"
+
+    $Result = [PSCustomObject]@{
+        ComputerName       = $env:COMPUTERNAME
+        Manufacturer       = $Manufacturer
+        Model              = $Model
+        BIOSVersion        = $BIOSVersion
+        BIOSDate           = $BIOSDate
+        OSVersion          = $OSVersion
+        OSBuild            = $OSBuild
+        IsUEFI             = $IsUEFI
+        SecureBootEnabled  = $SecureBootEnabled
+        KEK2023Present     = $HasKEK2023
+        DB2023Present      = $HasDB2023
+        DBXPresent         = $HasDBX
+        DetectedKEK2023    = $DetectedKEK2023
+        DetectedDB2023     = $DetectedDB2023
+        DBXBytesCount      = $DBXBytesCount
+        Score              = $Score
+        Status             = $Status
+        Recommendation     = $Recommendation
+        LastError          = $UnsupportedReason
+        ScanDate           = (Get-Date).ToString("s")
+    }
+
+    $Result | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
+
+    if (-not $Quiet) {
+        Write-Host "CSV Export     : $CsvFile"
+    }
 }
 
 if ($ExportHtml) {
