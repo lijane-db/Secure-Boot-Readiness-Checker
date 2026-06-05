@@ -3,7 +3,7 @@
     Secure Boot Readiness Checker
 
 .VERSION
-    1.6
+    1.7
 
 .AUTHOR
     Lijane Consulting
@@ -274,8 +274,39 @@ if ($CheckEvents) {
     Write-Host ""
 }
 
-if ($ExportJson) {
+$Result = [PSCustomObject]@{
+    ComputerName                 = $env:COMPUTERNAME
+    Manufacturer                 = $Manufacturer
+    Model                        = $Model
+    BIOSVersion                  = $BIOSVersion
+    BIOSDate                     = $BIOSDate
+    OSVersion                    = $OSVersion
+    OSBuild                      = $OSBuild
 
+    IsUEFI                       = $IsUEFI
+    SecureBootEnabled            = $SecureBootEnabled
+    KEK2023Present               = $HasKEK2023
+    DB2023Present                = $HasDB2023
+    DBXPresent                   = $HasDBX
+
+    DetectedKEK2023              = $DetectedKEK2023
+    DetectedDB2023               = $DetectedDB2023
+    DBXBytesCount                = $DBXBytesCount
+
+    CheckEvents                  = $CheckEvents
+    LastSecureBootEventId        = $LastSecureBootEventId
+    LastSecureBootEventDate      = $LastSecureBootEventDate
+    SecureBootEventStatus        = $SecureBootEventStatus
+    LastSecureBootEventMessage   = $LastSecureBootEventMessage
+
+    Score                        = $Score
+    Status                       = $Status
+    Recommendation               = $Recommendation
+    LastError                    = $UnsupportedReason
+    ScanDate                     = (Get-Date).ToString("s")
+}
+
+if ($ExportJson) {
     if (-not (Test-Path $OutputPath)) {
         New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
     }
@@ -283,70 +314,20 @@ if ($ExportJson) {
     $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $JsonFile = Join-Path $OutputPath "SecureBootReadiness_$env:COMPUTERNAME`_$Timestamp.json"
 
-    $Result = [PSCustomObject]@{
-        ComputerName       = $env:COMPUTERNAME
-        Manufacturer       = $Manufacturer
-        Model              = $Model
-        BIOSVersion        = $BIOSVersion
-        BIOSDate           = $BIOSDate
-        OSVersion          = $OSVersion
-        OSBuild            = $OSBuild
-        IsUEFI             = $IsUEFI
-        SecureBootEnabled  = $SecureBootEnabled
-        KEK2023Present     = $HasKEK2023
-        DB2023Present      = $HasDB2023
-        DBXPresent         = $HasDBX
-        DetectedKEK2023    = $DetectedKEK2023
-        DetectedDB2023     = $DetectedDB2023
-        DBXBytesCount      = $DBXBytesCount
-        Score              = $Score
-        Status             = $Status
-        Recommendation     = $Recommendation
-        LastError          = $UnsupportedReason
-        CheckEvents                = $CheckEvents
-        LastSecureBootEventId      = $LastSecureBootEventId
-        LastSecureBootEventDate    = $LastSecureBootEventDate
-        SecureBootEventStatus      = $SecureBootEventStatus
-        LastSecureBootEventMessage = $LastSecureBootEventMessage
-        ScanDate           = (Get-Date).ToString("s")
-    }
-
     $Result | ConvertTo-Json -Depth 5 | Out-File -FilePath $JsonFile -Encoding UTF8
 
-    Write-Host "JSON Export    : $JsonFile"
+    if (-not $Quiet) {
+        Write-Host "JSON Export    : $JsonFile"
+    }
 }
 
 if ($ExportCsv) {
-
     if (-not (Test-Path $OutputPath)) {
         New-Item -Path $OutputPath -ItemType Directory -Force | Out-Null
     }
 
     $Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $CsvFile = Join-Path $OutputPath "SecureBootReadiness_$env:COMPUTERNAME`_$Timestamp.csv"
-
-    $Result = [PSCustomObject]@{
-        ComputerName       = $env:COMPUTERNAME
-        Manufacturer       = $Manufacturer
-        Model              = $Model
-        BIOSVersion        = $BIOSVersion
-        BIOSDate           = $BIOSDate
-        OSVersion          = $OSVersion
-        OSBuild            = $OSBuild
-        IsUEFI             = $IsUEFI
-        SecureBootEnabled  = $SecureBootEnabled
-        KEK2023Present     = $HasKEK2023
-        DB2023Present      = $HasDB2023
-        DBXPresent         = $HasDBX
-        DetectedKEK2023    = $DetectedKEK2023
-        DetectedDB2023     = $DetectedDB2023
-        DBXBytesCount      = $DBXBytesCount
-        Score              = $Score
-        Status             = $Status
-        Recommendation     = $Recommendation
-        LastError          = $UnsupportedReason
-        ScanDate           = (Get-Date).ToString("s")
-    }
 
     $Result | Export-Csv -Path $CsvFile -NoTypeInformation -Encoding UTF8
 
@@ -471,7 +452,7 @@ body { font-family: Segoe UI, Arial; background:#f4f6f8; color:#1f2937; margin:0
     Write-Host "HTML Export    : $HtmlFile"
 }
 
-$ExitCode = switch ($Status) {
+$ExitCode = switch ($Result.Status) {
     "READY" { 0 }
     "READY WITH WARNING" { 1 }
     "ACTION REQUIRED" { 2 }
@@ -480,11 +461,10 @@ $ExitCode = switch ($Status) {
 }
 
 if ($Quiet) {
-    Write-Output "$Status;Score=$Score;KEK2023=$HasKEK2023;DB2023=$HasDB2023;DBX=$HasDBX"
+    Write-Output "$($Result.Status);Score=$($Result.Score);KEK2023=$($Result.KEK2023Present);DB2023=$($Result.DB2023Present);DBX=$($Result.DBXPresent)"
     exit $ExitCode
 }
-else {
-    exit 0
-}
+
+exit 0
 
 Write-Host "=================================================="
