@@ -4,8 +4,7 @@
 
 .DESCRIPTION
     Audits Secure Boot configuration, Microsoft KEK/DB 2023 certificates,
-    OEM Secure Boot keys, BitLocker status, firmware mode, and optional
-    TPM-WMI Secure Boot events.
+    OEM Secure Boot keys, BitLocker status and firmware mode.
 
     Supports console reporting, JSON export, CSV export, HTML reporting,
     and automation scenarios through exit codes.
@@ -19,11 +18,6 @@
     .\SecureBootReadinessChecker.ps1 -Detailed
 
     Displays additional Secure Boot certificate information.
-
-.EXAMPLE
-    .\SecureBootReadinessChecker.ps1 -Detailed -CheckEvents
-
-    Includes Secure Boot related TPM-WMI event analysis.
 
 .EXAMPLE
     .\SecureBootReadinessChecker.ps1 -ExportHtml -OpenReport
@@ -58,7 +52,6 @@
 [CmdletBinding()]
 param(
     [switch]$Detailed,
-    [switch]$CheckEvents,
     [switch]$ExportJson,
     [switch]$ExportCsv,
     [switch]$ExportHtml,
@@ -231,8 +224,7 @@ function Convert-ArrayToDisplayString {
 function Write-ConsoleReport {
     param(
         [object]$Result,
-        [switch]$Detailed,
-        [switch]$CheckEvents
+        [switch]$Detailed
     )
 
     Write-Host ""
@@ -279,15 +271,6 @@ function Write-ConsoleReport {
         Write-Host "Detected DB      : $($Result.AllDetectedDB)"
         Write-Host "DBX Bytes Count  : $($Result.DBXBytesCount)"
         Write-Host "Last Error       : $($Result.LastError)"
-        Write-Host ""
-    }
-
-    if ($CheckEvents) {
-        Write-Host "Secure Boot Events"
-        Write-Host "------------------"
-        Write-Host "Last Event ID   : $($Result.LastSecureBootEventId)"
-        Write-Host "Last Event Date : $($Result.LastSecureBootEventDate)"
-        Write-Host "Event Status    : $($Result.SecureBootEventStatus)"
         Write-Host ""
     }
 
@@ -411,16 +394,6 @@ body { font-family: Segoe UI, Arial; background:#f4f6f8; color:#1f2937; margin:0
       <div class="label">Detected DB Entries</div><div>$($Result.AllDetectedDB)</div>
       <div class="label">DBX Bytes Count</div><div>$($Result.DBXBytesCount)</div>
       <div class="label">Last Error</div><div>$($Result.LastError)</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Secure Boot Events</h2>
-    <div class="grid">
-      <div class="label">Check Events</div><div>$($Result.CheckEvents)</div>
-      <div class="label">Last Event ID</div><div>$($Result.LastSecureBootEventId)</div>
-      <div class="label">Last Event Date</div><div>$($Result.LastSecureBootEventDate)</div>
-      <div class="label">Event Status</div><div>$($Result.SecureBootEventStatus)</div>
     </div>
   </div>
 
@@ -562,51 +535,6 @@ $BitLocker = Get-BitLockerStatus
 
 #endregion
 
-#region Events
-
-$LastSecureBootEventId = $null
-$LastSecureBootEventDate = $null
-$LastSecureBootEventMessage = $null
-$SecureBootEventStatus = "Not checked"
-
-if ($CheckEvents) {
-    try {
-        $Events = Get-WinEvent -LogName "Microsoft-Windows-TPM-WMI/Operational" `
-            -FilterXPath "*[System[(EventID=1795 or EventID=1796 or EventID=1801 or EventID=1808)]]" `
-            -MaxEvents 20 `
-            -ErrorAction Stop
-
-        if ($Events) {
-            $LastEvent = $Events | Sort-Object TimeCreated -Descending | Select-Object -First 1
-
-            $LastSecureBootEventId = $LastEvent.Id
-            $LastSecureBootEventDate = $LastEvent.TimeCreated
-            $LastSecureBootEventMessage = $LastEvent.Message
-
-            $SecureBootEventStatus = switch ($LastEvent.Id) {
-                1808 { "Secure Boot update appears successfully applied." }
-                1795 { "Secure Boot update detected or initiated." }
-                1796 { "Secure Boot update warning or issue detected." }
-                1801 { "Secure Boot update issue detected." }
-                default { "Secure Boot related event detected." }
-            }
-        }
-        else {
-            $SecureBootEventStatus = "No Secure Boot related TPM-WMI event found."
-        }
-    }
-    catch {
-        if ($_.Exception.Message -match "There is not an event log") {
-            $SecureBootEventStatus = "TPM-WMI event log not available on this device."
-        }
-        else {
-            $SecureBootEventStatus = "Unable to read TPM-WMI events: $($_.Exception.Message)"
-        }
-    }
-}
-
-#endregion
-
 #region Scoring
 
 $Score = 0
@@ -659,12 +587,6 @@ $Result = [PSCustomObject]@{
     BitLockerVolumeStatus        = $BitLocker.VolumeStatus
     BitLockerEncryptionMethod    = $BitLocker.EncryptionMethod
 
-    CheckEvents                  = [bool]$CheckEvents
-    LastSecureBootEventId        = $LastSecureBootEventId
-    LastSecureBootEventDate      = $LastSecureBootEventDate
-    SecureBootEventStatus        = $SecureBootEventStatus
-    LastSecureBootEventMessage   = $LastSecureBootEventMessage
-
     Score                        = $Score
     Status                       = $Status
     Recommendation               = $Recommendation
@@ -677,7 +599,7 @@ $Result = [PSCustomObject]@{
 #region Output
 
 if (-not $Quiet) {
-    Write-ConsoleReport -Result $Result -Detailed:$Detailed -CheckEvents:$CheckEvents
+    Write-ConsoleReport -Result $Result -Detailed:$Detailed
 }
 
 if ($ExportJson) {
