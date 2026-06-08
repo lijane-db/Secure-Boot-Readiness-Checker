@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-06-08
+
+### Removed
+
+* Removed TPM-WMI event analysis.
+* The TPM-WMI event log is not consistently available across Windows versions and hardware vendors.
+
 ## [2.0] - 2026-06-05
 
 ### Added
