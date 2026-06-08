@@ -32,15 +32,6 @@ Detects OEM-specific Secure Boot certificates when available:
 * BitLocker encryption method
 * Secure Boot AvailableUpdates registry value
 
-### Secure Boot Event Analysis
-
-Optionally analyzes Secure Boot-related TPM-WMI events:
-
-* Event ID 1795
-* Event ID 1796
-* Event ID 1801
-* Event ID 1808
-
 ### Reporting
 
 Supports multiple output formats:
@@ -114,12 +105,6 @@ No installation is required.
 .\SecureBootReadinessChecker.ps1 -Detailed
 ```
 
-### Check TPM-WMI Events
-
-```powershell
-.\SecureBootReadinessChecker.ps1 -Detailed -CheckEvents
-```
-
 ### Export HTML Report
 
 ```powershell
@@ -143,7 +128,6 @@ No installation is required.
 ```powershell
 .\SecureBootReadinessChecker.ps1 `
     -Detailed `
-    -CheckEvents `
     -ExportJson `
     -ExportCsv `
     -ExportHtml
