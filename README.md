@@ -200,7 +200,7 @@ Score         : 100 / 100
 
 ## HTML Report
 
-![HTML Report](docs/SecureBootReadinessChecker_result.png)
+![HTML Report](docs/SecureBootReadinessChecker_results.png)
 
 ## Disclaimer
 
